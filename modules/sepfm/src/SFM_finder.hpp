@@ -7,7 +7,7 @@
 #define _OPENCV_SFM_FINDER_H_
 
 #include "precomp.hpp"
-
+#include "matching_lines.hpp"
 #include "np_cv_imp.hpp"
 #include "matching_points.hpp"
 #include "line_homography.hpp"
@@ -52,7 +52,6 @@ private:
     float maxDistancePtsLine;
     int topLineRetries;
     int minSharedPoints;
-    bool isExecuting;
     Mat points1;
     Mat points2;
     int nPoints;
@@ -67,14 +66,13 @@ public:
         points1.release();
         points2.release();
     }
+    
+    vector<top_line> FindMatchingLines();
 
-    Mat FindMat();
+    Mat FindMat(const vector<top_line> &topMathingLines);
+
 
     Mat TransformResultMat(Mat mat);
-
-    static vector<top_line> FindMatchingLines(const int im_size_h_org, const int im_size_w_org, cv::InputArray pts1, cv::InputArray pts2,
-        const int top_line_retries, float hough_rescale, float max_distance_pts_line, int min_hough_points, int pixel_res,
-        int theta_res, int num_matching_pts_to_use, int min_shared_points, float inlier_ratio);
 
 };
         

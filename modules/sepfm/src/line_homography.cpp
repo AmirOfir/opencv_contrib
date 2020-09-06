@@ -23,5 +23,22 @@ void FlattenToMat(const vector<Vec4f> &data, OutputArray _dst)
     _dst.assign(mat);
 }
 
+LineInliersModelResult modelInliers(const vector<double> &modelErrors, double inlierTh)
+{
+    LineInliersModelResult ret;
+
+    double errorSum = 0;
+    for (size_t i = 0; i < modelErrors.size(); i++)
+    {
+        if (modelErrors[i] < inlierTh)
+        {
+            ret.inlierIndexes.push_back(i);
+            errorSum += modelErrors[i];
+        }
+    }
+    ret.meanError = errorSum / ret.inlierIndexes.size();
+    return ret;
+}
+
 }
 }

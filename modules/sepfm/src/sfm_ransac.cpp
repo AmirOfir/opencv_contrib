@@ -49,7 +49,7 @@ public:
         CV_Assert( err.isContinuous() && err.type() == CV_32F && mask.isContinuous() && mask.type() == CV_8U);
         const float* errptr = err.ptr<float>();
         uchar* maskptr = mask.ptr<uchar>();
-        float t = (float)(thresh*thresh);
+        float t = (float)(thresh);
         int i, n = (int)err.total(), nz = 0;
         for( i = 0; i < n; i++ )
         {
@@ -189,7 +189,7 @@ public:
                     std::swap(mask, bestMask);
                     model_i.copyTo(bestModel);
                     maxGoodCount = goodCount;
-                    niters = RANSACUpdateNumIters( confidence, (double)(count - goodCount)/count, modelPoints, niters );
+                    //niters = RANSACUpdateNumIters( confidence, (double)(count - goodCount)/count, modelPoints, niters );
                 }
             }
         }

@@ -56,6 +56,17 @@ public:
         return ret;
     }
 
+     VecMatchingPoints<_Tp> subset(const vector<size_t> &indices) const
+    {
+        VecMatchingPoints<_Tp> ret;
+        for (auto ix : indices)
+        {
+            ret._left.push_back(_left[ix]);
+            ret._right.push_back(_right[ix]);
+        }
+        return ret;
+    }
+
     VecMatchingPoints<_Tp> randomSample(uint sizeOfsample) const
     {
         VecMatchingPoints<_Tp> ret;

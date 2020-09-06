@@ -104,50 +104,92 @@ vector<double> lineHomographyError(Mat model, const VecMatchingPoints<_Tp> &data
     return ret;
 }
 
-struct LineInliersRansacResult
+struct LineInliersModelResult
 {
     vector<int> inlierIndexes;
     double meanError;
 };
 
+LineInliersModelResult modelInliers(const vector<double> &modelErrors, double inlierTh = 0.35);
+
+struct LineInliersRansacResult
+{
+    int inlierCount;
+    vector<vector<double>> fittestModelsErrors;
+};
+
+inline unsigned nChoosek( unsigned n, unsigned k )
+{
+    if (k > n) return 0;
+    if (k * 2 > n) k = n-k;
+    if (k == 0) return 1;
+
+    int result = n;
+    for( int i = 2; i <= k; ++i ) {
+        result *= (n-i+1);
+        result /= i;
+    }
+    return result;
+}
 template <typename _Tp>
-LineInliersRansacResult lineInliersRansac(int numIterations, const VecMatchingPoints<_Tp> &matchingPoints, _Tp inlierTh = 0.35)
+LineInliersRansacResult lineInliersRansac(int numIterations, const VecMatchingPoints<_Tp> &matchingPoints, double inlierTh = 0.35)
 {
     const int k = 3;
-    vector<double> fittestModelErrors;
-    int fittestModelInliers = 0;
+    LineInliersRansacResult result;
+    result.inlierCount = 0;
+
+    vector<VecMatchingPoints<_Tp>> samples;
+    int nMax = nChoosek(matchingPoints.size(), k);
+    if (nMax < numIterations + 50)
+    {
+        numIterations = nMax;
+        size_t max = matchingPoints.size();
+        for (size_t a = 0; a < max-2; a++)
+        {
+            for (size_t b = a+1; b < max-1; b++)
+            {
+                for (size_t c = b+1; c < max; c++)
+                {
+                    samples.push_back(matchingPoints.subset(vector<size_t>({ a, b, c })));
+                }
+            }
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < numIterations; i++)
+        {
+            auto sample = matchingPoints.randomSample(k);
+            samples.push_back(sample);
+        }
+    }
 
     for (int i = 0; i < numIterations; i++)
     {
-        auto sample = matchingPoints.randomSample(k);
-        auto sampleModel = findLineHomography(sample);
-        auto modelErrors = lineHomographyError(sampleModel, matchingPoints);
+        auto sample = samples[i];
+        Mat sampleModel = findLineHomography(sample);
+        
+        vector<double> modelErrors = lineHomographyError(sampleModel, matchingPoints);
         int modelInliers = 0;
         for (auto err : modelErrors)
         {
             if (err < inlierTh)
                 ++modelInliers;
         }
-        if (modelInliers > fittestModelInliers)
+
+        if (modelInliers > result.inlierCount)
         {
-            fittestModelErrors = move(modelErrors);
-            fittestModelInliers = modelInliers;
+            result.fittestModelsErrors.clear();
+            result.inlierCount = modelInliers;
+        }
+
+        if (modelInliers == result.inlierCount)
+        {
+            result.fittestModelsErrors.push_back(move(modelErrors));
         }
     }
 
-    // Statistics from the fittests model
-    LineInliersRansacResult ret;
-    double errorSum = 0;
-    for (size_t i = 0; i < fittestModelErrors.size(); i++)
-    {
-        if (fittestModelErrors[i] < inlierTh)
-        {
-            ret.inlierIndexes.push_back(i);
-            errorSum += fittestModelErrors[i];
-        }
-    }
-    ret.meanError = errorSum / ret.inlierIndexes.size();
-    return ret;
+    return result;
 
     /*def ransac_get_line_inliers(n_iters,line1_pts,line2_pts,inlier_th=0.35):
         data           = np.concatenate((line1_pts,line2_pts),axis=1)

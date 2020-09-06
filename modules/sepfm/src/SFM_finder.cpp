@@ -2,7 +2,6 @@
 // It is subject to the license terms in the LICENSE file found in the top-level directory
 // of this distribution and at http://opencv.org/license.html.
 
-
 #include "precomp.hpp"
 #include "SFM_finder.hpp"
 #include "pointset_registrator.hpp"
@@ -129,19 +128,55 @@ SeparableFundamentalMatFindCommand::SeparableFundamentalMatFindCommand(InputArra
         houghRescale = float(2 * pts1Count) / imSizeHOrg;
     else if (houghRescale > 1) // Only subsample
         houghRescale = 1;
-    isExecuting = false;
 }
 
 
-Mat SeparableFundamentalMatFindCommand::FindMat()
-{
-    isExecuting = true;
 
+vector<top_line> SeparableFundamentalMatFindCommand::FindMatchingLines()
+{
+    houghRescale = houghRescale * 2; // for the first time
+    maxDistancePtsLine = maxDistancePtsLine * 0.5;
+
+    Mat pts1Org = points1;
+    Mat pts2Org = points2;
+    Mat pts1, pts2;
+            
+    vector<top_line> topMatchingLines;
+    // we sample a small subset of features to use in the hough transform, if our sample is too sparse, increase it
+    for (auto i = 0; i < this->topLineRetries && topMatchingLines.size() < 2; i++)
+    {
+        // rescale points and image size for fast line detection
+        houghRescale = houghRescale * 0.5;
+        maxDistancePtsLine = maxDistancePtsLine * 2;
+        pts1 = houghRescale * pts1Org;
+        pts2 = houghRescale * pts2Org;
+        auto im_size_h = int(round(imSizeHOrg * houghRescale)) + 3;
+        auto im_size_w = int(round(imSizeWOrg * houghRescale)) + 3;
+
+        auto linesImg1 = getHoughLines(pts1, im_size_w, im_size_h, minHoughPints, pixelRes, thetaRes, maxDistancePtsLine, numMatchingPtsToUse);
+        auto linesImg2 = getHoughLines(pts2, im_size_w, im_size_h, minHoughPints, pixelRes, thetaRes, maxDistancePtsLine, numMatchingPtsToUse);
+        
+        if (linesImg1.size() && linesImg2.size())
+        {
+            topMatchingLines =
+                getTopMatchingLines(pts1, pts2, linesImg1, linesImg2, minSharedPoints, inlierRatio);
+        }
+    }
+
+    /*if (topMatchingLines.size())
+    {
+        points1 = pts1;
+        points2 = pts2;
+    }*/
+
+    return topMatchingLines;
+}
+
+
+Mat SeparableFundamentalMatFindCommand::FindMat(const vector<top_line> &topMatchingLines)
+{
     Mat f;
     
-    auto topMatchingLines = FindMatchingLines(imSizeHOrg, imSizeWOrg, points1, points2, topLineRetries, houghRescale, maxDistancePtsLine,
-        minHoughPints, pixelRes, thetaRes, numMatchingPtsToUse, minSharedPoints, inlierRatio);
-
     // We don't have at least one line
     if (!topMatchingLines.size()) return f;
     
@@ -175,7 +210,8 @@ Mat SeparableFundamentalMatFindCommand::TransformResultMat(Mat mat)
     diag.at<double>(1, 1) = houghRescale;
     diag.at<double>(2, 2) = 1;
 
-    Mat ret = diag * mat;
+    Mat ret = mat * diag;
+    ret = diag * mat;
     return ret;
 }
 
@@ -187,7 +223,12 @@ Mat cv::separableFundamentalMatrix::findSeparableFundamentalMat(InputArray _poin
 {
     SeparableFundamentalMatFindCommand command(_points1, _points2, _imSizeHOrg, _imSizeWOrg, _inlierRatio, _inlierThreashold, _houghRescale,
         _numMatchingPtsToUse, _pixelRes, _minHoughPints, _thetaRes, _maxDistancePtsLine, _topLineRetries, _minSharedPoints);
-    Mat f = command.FindMat();
-    f = command.TransformResultMat(f);
+
+    auto topMatchingLines = command.FindMatchingLines();
+    
+    Mat f = command.FindMat(topMatchingLines);
+
+    //f = command.TransformResultMat(f);
+
     return f;
 }
