@@ -44,7 +44,7 @@ private:
     int imSizeWOrg;
     float inlierRatio; 
     int inlierThreashold; 
-    float houghRescale; 
+    double houghRescale; 
     int numMatchingPtsToUse; 
     int pixelRes;
     int minHoughPints; 
@@ -58,7 +58,7 @@ public:
     int nPoints;
            
     SeparableFundamentalMatFindCommand(InputArray _points1, InputArray _points2, int _imSizeHOrg, int _imSizeWOrg,
-        float _inlierRatio, int _inlierThreashold, float _houghRescale, int _numMatchingPtsToUse, int _pixelRes,
+        float _inlierRatio, int _inlierThreashold, double _houghRescale, int _numMatchingPtsToUse, int _pixelRes,
         int _minHoughPints, int _thetaRes, float _maxDistancePtsLine, int _topLineRetries, int _minSharedPoints);
             
     ~SeparableFundamentalMatFindCommand()
