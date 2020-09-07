@@ -163,43 +163,99 @@ vector<top_line> SeparableFundamentalMatFindCommand::FindMatchingLines()
         }
     }
 
-    /*if (topMatchingLines.size())
+    if (topMatchingLines.size())
     {
         points1 = pts1;
         points2 = pts2;
-    }*/
+    }
 
     return topMatchingLines;
 }
 
-
-Mat SeparableFundamentalMatFindCommand::FindMat(const vector<top_line> &topMatchingLines)
+vector<Mat> SeparableFundamentalMatFindCommand::FindMat(const vector<top_line> &topMatchingLines)
 {
-    Mat f;
-    
+    vector<Mat> ret;
+
     // We don't have at least one line
-    if (!topMatchingLines.size()) return f;
+    if (!topMatchingLines.size()) return ret;
     
-    Mat mask;
-    f = Mat(3, 3, CV_64F);
-    int maxIterations = int((log(0.01) / log(1 - pow(inlierRatio, 5)))) + 1;
+    int maxIterations = 1896;// int((log(0.01) / log(1 - pow(inlierRatio, 5)))) + 1;
 
     Ptr<SFMEstimatorCallback> cb = makePtr<SFMEstimatorCallback>();
     int result;
 
     for (auto &topLine : topMatchingLines)
     {
+        Mat mask;
+        Mat f = Mat(3, 3, CV_64F);
+
         Mat line_x1n = Mat(topLine.selected_line_points1);
         Mat line_x2n = Mat(topLine.selected_line_points2);
         cb->setFixedMatrices(line_x1n, line_x2n);
         result = createRANSACPointSetRegistrator(cb, 5, 3., 0.99, maxIterations)->run(points1, points2, f, mask);
 
         if (result > 0)
-            break;
+        {
+            ret.push_back(f);
+        }
+    }
+    return ret;
+}
+
+int SeparableFundamentalMatFindCommand::CountInliers(Mat f)
+{
+    SFMEstimatorCallback c;
+    Mat err;
+    c.computeError(points1, points2, f, err);
+    float *eptr = err.ptr<float>();
+
+    // Count inliers
+    int inlierCount = 0;
+    for (size_t i = 0; i < err.rows; i++)
+    {
+        if (eptr[i] < inlierThreashold)
+        {
+            ++inlierCount;
+        }
     }
 
-    if( result <= 0 )
-        return Mat();
+    return inlierCount;
+}
+
+Mat SeparableFundamentalMatFindCommand::FindMatForInliers(Mat mat)
+{
+    SFMEstimatorCallback c;
+    Mat err;
+    c.computeError(points1, points2, mat, err);
+    float *eptr = err.ptr<float>();
+
+    // Count inliers
+    int inlierCount = 0;
+    for (size_t i = 0; i < err.rows; i++)
+    {
+        if (eptr[i] < inlierThreashold)
+        {
+            ++inlierCount;
+        }
+    }
+
+    // Create matrices with the inliers
+    Mat p1;
+    Mat p2;
+
+    for (size_t i = 0; i < err.rows; i++)
+    {
+        if (eptr[i] < inlierThreashold)
+        {
+            p1.push_back(points1.row(i));
+            p2.push_back(points2.row(i));
+        }
+    }
+    points1 = p1;
+    points2 = p2;
+
+    // Compute fundamental matrix
+    Mat f = cv::findFundamentalMat(p1, p2, noArray(), FM_8POINT);
     return f;
 }
 
@@ -226,9 +282,23 @@ Mat cv::separableFundamentalMatrix::findSeparableFundamentalMat(InputArray _poin
 
     auto topMatchingLines = command.FindMatchingLines();
     
-    Mat f = command.FindMat(topMatchingLines);
+    vector<Mat> matrices = command.FindMat(topMatchingLines);
+    int bestInliersCount = 0;
+    Mat bestInliersMat;
+    for (auto m: matrices)
+    {
+        int inliersCount = command.CountInliers(m);
+        if (bestInliersCount < inliersCount)
+        {
+            bestInliersCount = inliersCount;
+            bestInliersMat = m;
+        }
+    }
 
-    //f = command.TransformResultMat(f);
+    bestInliersMat = command.FindMatForInliers(bestInliersMat);
+
+    Mat f;
+    f = command.TransformResultMat(bestInliersMat);
 
     return f;
 }

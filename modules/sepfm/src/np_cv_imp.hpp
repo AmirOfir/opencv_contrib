@@ -296,7 +296,54 @@ vector<_Tp> MatrixVectorMul(Mat mat2d, Point3_<_Tp> vec, _Tp scale = 1, bool abs
     }
     return ret;
 }
-    
+
+   
+inline unsigned nChoosek( unsigned n, unsigned k )
+{
+    if (k > n) return 0;
+    if (k * 2 > n) k = n-k;
+    if (k == 0) return 1;
+
+    int result = n;
+    for( int i = 2; i <= k; ++i ) {
+        result *= (n-i+1);
+        result /= i;
+    }
+    return result;
+}
+
+inline vector<vector<int>> subsets(int n, int k)
+{
+    vector<vector<int>> ret;
+    unsigned int count = nChoosek(n, k);
+    vector<int> curr(k);
+
+    for (int i = 0; i < k; i++)
+    {
+        curr.push_back(i);
+    }
+    int i, vi;
+
+    for (i = 0; i < count; i++)
+    {
+        ret.push_back(vector<int>(curr));
+
+        // Update the numbers
+        for (vi = k - 1; vi > 0; --vi)
+        {
+            ++curr[vi];
+            if (curr[vi] == n)
+                curr[vi] = curr[vi - 1] + 2;
+        }
+        for (; vi < k; ++vi)
+        {
+            curr[vi] = max(curr[vi], curr[vi - 1] + 1);
+        }
+    }
+
+    return ret;
+}
+
 }
 }
 
