@@ -179,7 +179,7 @@ vector<Mat> SeparableFundamentalMatFindCommand::FindMat(const vector<top_line> &
     // We don't have at least one line
     if (!topMatchingLines.size()) return ret;
     
-    int maxIterations = 1896;// int((log(0.01) / log(1 - pow(inlierRatio, 5)))) + 1;
+    int maxIterations = 2 * int((log(0.01) / log(1 - pow(inlierRatio, 5)))) + 1;
 
     Ptr<SFMEstimatorCallback> cb = makePtr<SFMEstimatorCallback>();
     int result;
