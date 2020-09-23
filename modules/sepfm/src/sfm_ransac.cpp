@@ -116,7 +116,7 @@ public:
         return false;
     }
 
-    bool run(InputArray _m1, InputArray _m2, OutputArray _model, OutputArray _mask) const CV_OVERRIDE
+    bool run(InputArray _m1, InputArray _m2, OutputArray _model, OutputArray _mask, int &inliers) const CV_OVERRIDE
     {
         bool result = false;
         Mat m1 = _m1.getMat(), m2 = _m2.getMat();
@@ -205,6 +205,7 @@ public:
             }
             bestModel.copyTo(_model);
             result = true;
+            inliers = maxGoodCount;
         }
         else
             _model.release();

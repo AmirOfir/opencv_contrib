@@ -12,11 +12,17 @@ namespace separableFundamentalMatrix {
 using namespace cv;
 using namespace std;
 
-vector<line_info> getHoughLines(Mat pts, const int im_size_w, const int im_size_h, int min_hough_points,
+vector<line_info> getHoughLines(Mat pts, 
+    int im_size_w, int im_size_h, int min_hough_points,
     int pixel_res, int theta_res, double max_distance, int num_matching_pts_to_use);
     
-vector<top_line> getTopMatchingLines(InputArray _ptsImg1, InputArray _ptsImg2, const vector<line_info> &lineInfosImg1,
-    const vector<line_info> &lineInfosImg2, int minSharedPoints, double inlierRatio);
+vector<top_line> getTopMatchingLines(
+    InputArray _ptsImg1, InputArray _ptsImg2, 
+    const vector<line_info> &lineInfosImg1, const vector<line_info> &lineInfosImg2, 
+    const vector<Point3i> &sharedPoints, int minSharedPoints, double inlierRatio);
+
+Mat createHeatmap(InputArray ptsImg1, InputArray ptsImg2, 
+    const vector<line_info> &lineInfosImg1, const vector<line_info> &lineInfosImg2);
 
 }
 }

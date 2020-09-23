@@ -22,7 +22,7 @@ public:
     };
 
     virtual void setCallback(const Ptr<PointSetRegistrator::Callback>& cb) = 0;
-    virtual bool run(InputArray m1, InputArray m2, OutputArray model, OutputArray mask) const = 0;
+    virtual bool run(InputArray m1, InputArray m2, OutputArray model, OutputArray mask, int &inliers) const = 0;
 };
 
 Ptr<PointSetRegistrator> createRANSACPointSetRegistrator(const Ptr<PointSetRegistrator::Callback>& _cb,

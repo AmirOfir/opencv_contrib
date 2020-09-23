@@ -13,7 +13,7 @@ using namespace cv;
 using namespace std;
 using namespace cv::separableFundamentalMatrix;
 
-Mat createHeatmap(InputArray ptsImg1, InputArray ptsImg2, const vector<line_info> &lineInfosImg1, const vector<line_info> &lineInfosImg2)
+Mat cv::separableFundamentalMatrix::createHeatmap(InputArray ptsImg1, InputArray ptsImg2, const vector<line_info> &lineInfosImg1, const vector<line_info> &lineInfosImg2)
 {
     /*
     pts_lines         = np.zeros((len(pts1), len(lines_info_img1), len(lines_info_img2)))
@@ -82,20 +82,24 @@ array<top_line,2> topTwoLinesWithMaxAngle(const vector<line_info> &lineInfosImg1
         [](const top_line &line1, const top_line &line2) { return line1.min_dist > line2.min_dist; });
 
     const top_line firstLine = topLines[0];
-            
-    auto firstLineEq = lineInfosImg1[firstLine.line1_index].line_eq_abc_norm;
+
     double maxAngle = -180;
     int maxAngleIx;
+    
+    auto firstLineEq = lineInfosImg1[firstLine.line1_index].line_eq_abc_norm;
+        
+        
     for (int i = 1; i < topLines.size(); i++)
     {
         auto lineEq = lineInfosImg1[topLines[i].line1_index].line_eq_abc_norm;
-        double angle = std::acos(std::min<double>((lineEq.x*firstLineEq.x) + (lineEq.y*firstLineEq.y), 1)) * 180/ CV_PI;
-        if (std::min(angle, 180-angle) > maxAngle)
+        double angle = std::acos(std::min<double>((lineEq.x*firstLineEq.x) + (lineEq.y*firstLineEq.y), 1)) * 180 / CV_PI;
+        if (std::min(angle, 180 - angle) > maxAngle)
         {
-            maxAngle = std::min(angle, 180-angle);
+            maxAngle = std::min(angle, 180 - angle);
             maxAngleIx = i;
         }
     }
+    
     return { move(firstLine), move(topLines[maxAngleIx]) };
 }
 
@@ -172,53 +176,26 @@ top_line createTopLine(InputArray _ptsImg1, InputArray _ptsImg2, const vector<Po
     return curr;
 }
 
-vector<top_line> cv::separableFundamentalMatrix::getTopMatchingLines(InputArray _ptsImg1, InputArray _ptsImg2, const vector<line_info> &lineInfosImg1,
-    const vector<line_info> &lineInfosImg2, int minSharedPoints, double inlierRatio)
+vector<top_line> cv::separableFundamentalMatrix::getTopMatchingLines(
+    InputArray _ptsImg1, InputArray _ptsImg2, 
+    const vector<line_info> &lineInfosImg1, const vector<line_info> &lineInfosImg2, 
+    const vector<Point3i> &sharedPoints, int minSharedPoints, double inlierRatio)
 {
-
-    // Create a heatmap between points of each line
-    Mat heatmap = createHeatmap(_ptsImg1, _ptsImg2, lineInfosImg1, lineInfosImg2);
-
-    // Remove all entries which does not have two matching lines (pts_lines[pts_lines<2] =0)
-    heatmap.setTo(0, heatmap < 2);
-
-    // Sum across points' index, this gives us how many shared points for each pair of lines
-    Mat hough_pts;
-    reduceSum3d<uchar, int>(heatmap, hough_pts, (int)CV_32S);
-
-    // Use voting to find out which lines shares points
-    // Convert to a list where each entry is 1x3: the number of shared points for each pair of line and their indices
-    auto num_shared_points_vote = indices<int>(hough_pts);
-
-    //  Delete all non-relevent entries: That have minSharedPoints for each side (multiply by two - one for left line and one for right line).
-    // Note: This could be done only on the x column but the python code does the same
-    num_shared_points_vote.erase(
-        std::remove_if(num_shared_points_vote.begin(), num_shared_points_vote.end(), [minSharedPoints](const Point3i p) {
-            return (bool)(p.x < minSharedPoints * 2 || p.y < minSharedPoints * 2 || p.z < minSharedPoints * 2);
-            }), num_shared_points_vote.end()
-                );
-
-    // Sort the entries (in reverse order)
-    // Note: could've sorted them by x only, but the python code sorted like that
-    //std::sort(num_shared_points_vote.rbegin(), num_shared_points_vote.rend(), lexicographicalSort3d<int>);
-    std::sort(num_shared_points_vote.begin(), num_shared_points_vote.end(), 
-        [](Point3i &a, Point3i &b)
-        {
-            return a.x > b.x || (a.x == b.x && a.y < b.y) || (a.x == b.x && a.y == b.y && a.z < b.z);
-        });
-
     // For each matching points on the matching lines,
     // project the shared points to be exactly on the line
     // start with the lines that shared the highest number of points, so we can do top-N
     // return a list index by the lines (k,j) with the projected points themself
     int num_line_ransac_iterations = int((log(0.01) / log(1 - pow(inlierRatio, 3)))) + 1;
     
+    std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
+    auto start = std::chrono::high_resolution_clock::now();
+
     // Go over the top lines with the most number of shared points, project the points, store by the matching indices of the pair of lines
-    int num_sorted_lines = min((int)num_shared_points_vote.size(), 50);
+    int num_sorted_lines = min((int)sharedPoints.size(), 50);
     top_line topLines[50];
     for (size_t n = 0; n < num_sorted_lines; n++)
     {
-        topLines[n] = createTopLine(_ptsImg1, _ptsImg2, num_shared_points_vote, 
+        topLines[n] = createTopLine(_ptsImg1, _ptsImg2, sharedPoints, 
             lineInfosImg1, lineInfosImg2, n, num_line_ransac_iterations);
     }
     /*parallel_for_(Range(0, num_sorted_lines), [&](const Range& range) {
@@ -229,17 +206,32 @@ vector<top_line> cv::separableFundamentalMatrix::getTopMatchingLines(InputArray 
         }
     });*/
 
+    auto end = std::chrono::high_resolution_clock::now();
+    outfile << "Creation of top lines ";
+    std::chrono::duration<double> d = end - start;
+    outfile << d.count() << endl;
+    start = std::chrono::high_resolution_clock::now();
+    
     vector<top_line> nonEmptyTopLines;
     for (size_t i = 0; i < num_sorted_lines; i++)
     {
         if (!topLines[i].empty())
             nonEmptyTopLines.push_back(topLines[i]);
     }
-            
+    
     if (nonEmptyTopLines.size() < 2)
         return {};
-            
+    
+    //outfile.close();
+
     auto topTwoLines = topTwoLinesWithMaxAngle(lineInfosImg1, nonEmptyTopLines);
+    //outfile.open("e:\\test.txt", std::ios_base::app); 
+    end = std::chrono::high_resolution_clock::now();
+    outfile << "Extraction of lines with max angle ";
+    d = end - start;
+    outfile << d.count() << endl;
+    start = std::chrono::high_resolution_clock::now();
+
     return { topTwoLines[0], topTwoLines[1] };
     //return {};
 }
@@ -327,24 +319,44 @@ line_info createLineInfo(Mat pts, const vector<_Tp> &points_intersection, _Tp ma
     return ret;
 }
 
-vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts, const int im_size_w, const int im_size_h, int min_hough_points,
+vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts, 
+    int im_size_w, int im_size_h, int min_hough_points,
     int pixel_res, int theta_res, double max_distance, int num_matching_pts_to_use)
 {
-    Mat ptsRounded = pts.clone();
-    ptsRounded.convertTo(ptsRounded, CV_32S);
+    vector<line_info> lineInfos;
+    std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
+    auto start = std::chrono::high_resolution_clock::now();
 
+    num_matching_pts_to_use = min(pts.size().height, num_matching_pts_to_use);
+
+    Mat ptsRounded;
+    pts.convertTo(ptsRounded, CV_32S);
+
+    // Fill map
     Mat bw_img = Mat::zeros(im_size_h, im_size_w, CV_8U);
-    num_matching_pts_to_use = min(ptsRounded.size().height, num_matching_pts_to_use);
     for (int addedCount = 0; addedCount < num_matching_pts_to_use; ++addedCount)
     {
         int x0 = ptsRounded.at<int>(addedCount, 1), x1 = ptsRounded.at<int>(addedCount, 0);
         bw_img.at<uint8_t>(x0, x1) = (unsigned short)255;
     }
 
+    auto end = std::chrono::high_resolution_clock::now();
+    outfile << "preparing to hough lines ";
+    std::chrono::duration<double> d = end - start;
+    outfile << d.count() << endl;
+    
+    start = std::chrono::high_resolution_clock::now();
+    
     vector<Vec2f> houghLines;
     cv::HoughLines(bw_img, houghLines, pixel_res, CV_PI / theta_res, min_hough_points);
 
-    vector<line_info> lineInfos;
+    end = std::chrono::high_resolution_clock::now();
+    outfile << "hough lines ";
+    d = end - start;
+    outfile << d.count() << endl;
+
+    start = std::chrono::high_resolution_clock::now();
+
     int lineIndex = 0;
     for (auto l : houghLines)
     {
@@ -356,6 +368,11 @@ vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts, const 
             ++lineIndex;
         }
     }
+
+    end = std::chrono::high_resolution_clock::now();
+    outfile << "point to line matching ";
+    d = end - start;
+    outfile << d.count() << endl;
 
     return lineInfos;
 }

@@ -69,7 +69,7 @@ public:
     
     vector<top_line> FindMatchingLines();
 
-    vector<Mat> FindMat(const vector<top_line> &topMathingLines);
+    bool FindMat(const top_line &topMathingLine, Mat &mat, int &inliers);
 
     int CountInliers(Mat f);
 

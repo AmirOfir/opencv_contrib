@@ -97,12 +97,14 @@ void reduceSum3d(InputArray _src, OutputArray _dst, int dtype)
             
         for (int i = range.start; i < range.end; i++)
         {
+            TSource *srcptr = src.data + i * src.step.p[0];
             for (int j = 0; j < sizes[1]; j++)
             {
                 TDest c = 0;
                 for (int k = 0; k < reduce_count; k++)
                 {
-                    c += src.at<TSource>( i, j, k );
+                    c += *srcptr;//src.at<TSource>( i, j, k );
+                    ++srcptr;
                 }
                 dst.at<TDest>(i, j) = c;
             }

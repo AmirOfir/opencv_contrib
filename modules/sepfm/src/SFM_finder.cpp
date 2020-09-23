@@ -150,17 +150,77 @@ vector<top_line> SeparableFundamentalMatFindCommand::FindMatchingLines()
         maxDistancePtsLine = maxDistancePtsLine * 2;
         pts1 = houghRescale * pts1Org;
         pts2 = houghRescale * pts2Org;
+        
         auto im_size_h = int(round(imSizeHOrg * houghRescale)) + 3;
         auto im_size_w = int(round(imSizeWOrg * houghRescale)) + 3;
-
-        auto linesImg1 = getHoughLines(pts1, im_size_w, im_size_h, minHoughPints, pixelRes, thetaRes, maxDistancePtsLine, numMatchingPtsToUse);
-        auto linesImg2 = getHoughLines(pts2, im_size_w, im_size_h, minHoughPints, pixelRes, thetaRes, maxDistancePtsLine, numMatchingPtsToUse);
         
-        if (linesImg1.size() && linesImg2.size())
+        vector<line_info> linesImg1 = getHoughLines(pts1, im_size_w, im_size_h, minHoughPints, pixelRes, thetaRes, maxDistancePtsLine, numMatchingPtsToUse);
+        vector<line_info> linesImg2 = getHoughLines(pts2, im_size_w, im_size_h, minHoughPints, pixelRes, thetaRes, maxDistancePtsLine, numMatchingPtsToUse);
+        
+        if (!linesImg1.size() || !linesImg2.size())
+            continue;
+        std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        // Create a heatmap between points of each line
+        Mat heatmap = createHeatmap(pts1, pts2, linesImg1, linesImg2);
+
+        // Remove all entries which does not have two matching lines (pts_lines[pts_lines<2] =0)
+        heatmap.setTo(0, heatmap < 2);
+
+        auto end = std::chrono::high_resolution_clock::now();
+        outfile << "Heatmap ";
+        std::chrono::duration<double> d = end - start;
+        outfile << d.count() << endl;
+        start = std::chrono::high_resolution_clock::now();
+
+        // Sum across points' index, this gives us how many shared points for each pair of lines
+        Mat houghPts;
+        reduceSum3d<uchar, int>(heatmap, houghPts, (int)CV_32S);
+
+        heatmap.release();
+        end = std::chrono::high_resolution_clock::now();
+        outfile << "Sum across points' index ";
+        d = end - start;
+        outfile << d.count() << endl;
+
+        start = std::chrono::high_resolution_clock::now();
+
+        // Use voting to find out which lines shares points
+        // Convert to a list where each entry is 1x3: the number of shared points for each pair of line and their indices
+        vector<Point3i> sharedPoints = indices<int>(houghPts);
+
+        //  Delete all non-relevent entries: 
+        // That have minSharedPoints for each side (multiply by two - one for left line and one for right line).
+        // Note: This could be done only on the x column but the python code does the same
+        sharedPoints.erase(
+            std::remove_if(sharedPoints.begin(), sharedPoints.end(), [&](const Point3i p) {
+                return (bool)(p.x < minSharedPoints * 2 || p.y < minSharedPoints * 2 || p.z < minSharedPoints * 2);
+            }), sharedPoints.end()
+        );
+
+        if (!sharedPoints.size())
+            continue;
+
+        // Sort the shared points (in reverse order)
+        // Note: could've sorted them by x only, but the python code sorted like that
+        //std::sort(num_shared_points_vote.rbegin(), num_shared_points_vote.rend(), lexicographicalSort3d<int>);
+        std::sort(sharedPoints.begin(), sharedPoints.end(), 
+        [](Point3i &a, Point3i &b)
         {
-            topMatchingLines =
-                getTopMatchingLines(pts1, pts2, linesImg1, linesImg2, minSharedPoints, inlierRatio);
-        }
+            return a.x > b.x || (a.x == b.x && a.y < b.y) || (a.x == b.x && a.y == b.y && a.z < b.z);
+        });
+
+        end = std::chrono::high_resolution_clock::now();
+        outfile << "shared points - sort ";
+        d = end - start;
+        outfile << d.count() << endl;
+        outfile.close();
+
+
+        topMatchingLines =
+            getTopMatchingLines(pts1, pts2, linesImg1, linesImg2, sharedPoints, minSharedPoints, inlierRatio);
+        
     }
 
     if (topMatchingLines.size())
@@ -172,34 +232,25 @@ vector<top_line> SeparableFundamentalMatFindCommand::FindMatchingLines()
     return topMatchingLines;
 }
 
-vector<Mat> SeparableFundamentalMatFindCommand::FindMat(const vector<top_line> &topMatchingLines)
-{
-    vector<Mat> ret;
-
-    // We don't have at least one line
-    if (!topMatchingLines.size()) return ret;
-    
-    int maxIterations = 2 * int((log(0.01) / log(1 - pow(inlierRatio, 5)))) + 1;
+bool SeparableFundamentalMatFindCommand::FindMat(const top_line &topMatchingLine, Mat &mat, int &inliers)
+{   
+    int maxIterations = int((log(0.01) / log(1 - pow(inlierRatio, 5)))) + 1;
 
     Ptr<SFMEstimatorCallback> cb = makePtr<SFMEstimatorCallback>();
-    int result;
+ 
+    Mat mask;
+    Mat f = Mat(3, 3, CV_64F);
 
-    for (auto &topLine : topMatchingLines)
+    Mat line_x1n = Mat(topMatchingLine.selected_line_points1);
+    Mat line_x2n = Mat(topMatchingLine.selected_line_points2);
+    cb->setFixedMatrices(line_x1n, line_x2n);
+    bool result = createRANSACPointSetRegistrator(cb, 5, 3., 0.99, maxIterations)->run(points1, points2, f, mask, inliers);
+
+    if (result)
     {
-        Mat mask;
-        Mat f = Mat(3, 3, CV_64F);
-
-        Mat line_x1n = Mat(topLine.selected_line_points1);
-        Mat line_x2n = Mat(topLine.selected_line_points2);
-        cb->setFixedMatrices(line_x1n, line_x2n);
-        result = createRANSACPointSetRegistrator(cb, 5, 3., 0.99, maxIterations)->run(points1, points2, f, mask);
-
-        if (result > 0)
-        {
-            ret.push_back(f);
-        }
+        f.copyTo(mat);
     }
-    return ret;
+    return result;
 }
 
 int SeparableFundamentalMatFindCommand::CountInliers(Mat f)
@@ -282,23 +333,40 @@ Mat cv::separableFundamentalMatrix::findSeparableFundamentalMat(InputArray _poin
 
     auto topMatchingLines = command.FindMatchingLines();
     
-    vector<Mat> matrices = command.FindMat(topMatchingLines);
+    std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
+    auto start = std::chrono::high_resolution_clock::now();
+
     int bestInliersCount = 0;
     Mat bestInliersMat;
-    for (auto m: matrices)
+    for (auto topLine: topMatchingLines)
     {
-        int inliersCount = command.CountInliers(m);
-        if (bestInliersCount < inliersCount)
+        Mat m;
+        int i;
+        if (command.FindMat(topLine, m, i))
         {
-            bestInliersCount = inliersCount;
-            bestInliersMat = m;
+            if (i > bestInliersCount)
+            {
+                bestInliersCount = i;
+                bestInliersMat = m;
+            }
         }
     }
 
-    bestInliersMat = command.FindMatForInliers(bestInliersMat);
+    auto end = std::chrono::high_resolution_clock::now();
+    outfile << "Finding mat ";
+    std::chrono::duration<double> d = end - start;
+    outfile << d.count() << endl;
+    start = std::chrono::high_resolution_clock::now();
+
+    //bestInliersMat = command.FindMatForInliers(bestInliersMat);
 
     Mat f;
     f = command.TransformResultMat(bestInliersMat);
+
+    end = std::chrono::high_resolution_clock::now();
+    outfile << "mat transform ";
+    d = end - start;
+    outfile << d.count() << endl;
 
     return f;
 }
