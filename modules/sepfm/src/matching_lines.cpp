@@ -88,18 +88,8 @@ array<top_line,2> topTwoLinesWithMaxAngle(const vector<line_info> &lineInfosImg1
     
     auto firstLineEq = lineInfosImg1[firstLine.line1_index].line_eq_abc_norm;
         
-        
     for (int i = 1; i < topLines.size(); i++)
     {
-        if (topLines[i].line1_index >= lineInfosImg1.size())
-        {
-            std::ofstream outfile;  outfile.open("e:\\error.txt", std::ios_base::app); 
-            outfile << "OOR" << endl;
-            outfile << i << endl;
-            outfile << topLines[i].line1_index << endl;
-            outfile << lineInfosImg1.size() << endl;
-            outfile << topLines[i].num_inliers << endl;
-        }
         auto lineEq = lineInfosImg1[topLines[i].line1_index].line_eq_abc_norm;
         double angle = std::acos(std::min<double>((lineEq.x*firstLineEq.x) + (lineEq.y*firstLineEq.y), 1)) * 180 / CV_PI;
         if (std::min(angle, 180 - angle) > maxAngle)
@@ -196,19 +186,12 @@ vector<top_line> cv::separableFundamentalMatrix::getTopMatchingLines(
     // start with the lines that shared the highest number of points, so we can do top-N
     // return a list index by the lines (k,j) with the projected points themself
     int num_line_ransac_iterations = int((log(0.01) / log(1 - pow(inlierRatio, 3)))) + 1;
-#ifdef TIMES
-    std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
-    auto start = std::chrono::high_resolution_clock::now();
-#endif
+
     // Go over the top lines with the most number of shared points, project the points, store by the matching indices of the pair of lines
     int num_sorted_lines = min((int)sharedPoints.size(), 50);
     top_line topLines[50];
     bool topLinesPresent[50];
-    /*for (size_t n = 0; n < num_sorted_lines; n++)
-    {
-        topLines[n] = createTopLine(_ptsImg1, _ptsImg2, sharedPoints, 
-            lineInfosImg1, lineInfosImg2, n, num_line_ransac_iterations);
-    }*/
+
     cv::parallel_for_(Range(0, num_sorted_lines), [&](const Range& range) {
         for (size_t n = range.start; n < range.end; n++)
         {
@@ -224,27 +207,13 @@ vector<top_line> cv::separableFundamentalMatrix::getTopMatchingLines(
         if (topLinesPresent[i])
             nonEmptyTopLines.push_back(topLines[i]);
     }
-#ifdef TIMES
-    auto end = std::chrono::high_resolution_clock::now();
-    outfile << num_sorted_lines << endl;
-    outfile << "Creation of top lines ";
-    std::chrono::duration<double> d = end - start;
-    outfile << d.count() << endl;
-    start = std::chrono::high_resolution_clock::now();
-#endif    
+
     if (nonEmptyTopLines.size() < 2)
         return {};
     
     auto topTwoLines = topTwoLinesWithMaxAngle(lineInfosImg1, nonEmptyTopLines);
-#ifdef TIMES
-    end = std::chrono::high_resolution_clock::now();
-    outfile << "Extraction of lines with max angle ";
-    d = end - start;
-    outfile << d.count() << endl;
-    start = std::chrono::high_resolution_clock::now();
-#endif
+
     return { topTwoLines[0], topTwoLines[1] };
-    //return {};
 }
 
 template <typename _Tp>
@@ -336,10 +305,6 @@ vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts,
 {
     vector<line_info> lineInfos;
 
-#ifdef TIMES
-    std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
-    auto start = std::chrono::high_resolution_clock::now();
-#endif
 
     num_matching_pts_to_use = min(pts.size().height, num_matching_pts_to_use);
 
@@ -354,26 +319,8 @@ vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts,
         bw_img.at<uint8_t>(x0, x1) = (unsigned short)255;
     }
 
-#ifdef TIMES
-    auto end = std::chrono::high_resolution_clock::now();
-    outfile << "preparing to hough lines ";
-    std::chrono::duration<double> d = end - start;
-    outfile << d.count() << endl;
-    
-    start = std::chrono::high_resolution_clock::now();
-#endif  
-
     vector<Vec2f> houghLines;
     cv::HoughLines(bw_img, houghLines, pixel_res, CV_PI / theta_res, min_hough_points);
-
-#ifdef TIMES
-    end = std::chrono::high_resolution_clock::now();
-    outfile << "hough lines ";
-    d = end - start;
-    outfile << d.count() << endl;
-
-    start = std::chrono::high_resolution_clock::now();
-#endif
 
     int lineIndex = 0;
     for (auto l : houghLines)
@@ -386,11 +333,6 @@ vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts,
             ++lineIndex;
         }
     }
-#ifdef TIMES
-    end = std::chrono::high_resolution_clock::now();
-    outfile << "point to line matching ";
-    d = end - start;
-    outfile << d.count() << endl;
-#endif
+
     return lineInfos;
 }

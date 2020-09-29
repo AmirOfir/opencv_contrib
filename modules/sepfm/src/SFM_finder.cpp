@@ -347,7 +347,7 @@ public:
 };
 
 
-cv::Mat regFindFundamentalMat( InputArray _points1, InputArray _points2,
+cv::Mat cv::separableFundamentalMatrix::regFindFundamentalMat( InputArray _points1, InputArray _points2,
                                 int method, double ransacReprojThreshold, double confidence,
                                 int maxIters, OutputArray _mask )
 {
@@ -536,37 +536,19 @@ vector<top_line> SeparableFundamentalMatFindCommand::FindMatchingLines()
         
         if (!linesImg1.size() || !linesImg2.size())
             continue;
-#ifdef TIMES
-        std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
-        auto start = std::chrono::high_resolution_clock::now();
-#endif
+
         // Create a heatmap between points of each line
         Mat heatmap = createHeatmap(pts1, pts2, linesImg1, linesImg2);
 
         // Remove all entries which does not have two matching lines (pts_lines[pts_lines<2] =0)
         heatmap.setTo(0, heatmap < 2);
 
-#ifdef TIMES
-        auto end = std::chrono::high_resolution_clock::now();
-        outfile << "Heatmap ";
-        std::chrono::duration<double> d = end - start;
-        outfile << d.count() << endl;
-        start = std::chrono::high_resolution_clock::now();
-#endif
         // Sum across points' index, this gives us how many shared points for each pair of lines
         Mat houghPts;
         reduceSum3d<uchar, int>(heatmap, houghPts, (int)CV_32S);
 
         heatmap.release();
 
-#ifdef TIMES
-        end = std::chrono::high_resolution_clock::now();
-        outfile << "Sum across points' index ";
-        d = end - start;
-        outfile << d.count() << endl;
-
-        start = std::chrono::high_resolution_clock::now();
-#endif
         // Use voting to find out which lines shares points
         // Convert to a list where each entry is 1x3: the number of shared points for each pair of line and their indices
         vector<Point3i> sharedPoints = indices<int>(houghPts);
@@ -591,14 +573,6 @@ vector<top_line> SeparableFundamentalMatFindCommand::FindMatchingLines()
         {
             return a.x > b.x || (a.x == b.x && a.y < b.y) || (a.x == b.x && a.y == b.y && a.z < b.z);
         });
-
-#ifdef TIMES
-        end = std::chrono::high_resolution_clock::now();
-        outfile << "shared points - sort ";
-        d = end - start;
-        outfile << d.count() << endl;
-        outfile.close();
-#endif
 
         topMatchingLines =
             getTopMatchingLines(pts1, pts2, linesImg1, linesImg2, sharedPoints, minSharedPoints, inlierRatio);
@@ -714,10 +688,6 @@ Mat cv::separableFundamentalMatrix::findSeparableFundamentalMat(InputArray _poin
         _numMatchingPtsToUse, _pixelRes, _minHoughPints, _thetaRes, _maxDistancePtsLine, _topLineRetries, _minSharedPoints);
 
     auto topMatchingLines = command.FindMatchingLines();
-#ifdef TIMES
-    std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
-    auto start = std::chrono::high_resolution_clock::now();
-#endif
     int bestInliersCount = 0;
     Mat bestInliersMat;
     for (auto topLine: topMatchingLines)
@@ -733,23 +703,8 @@ Mat cv::separableFundamentalMatrix::findSeparableFundamentalMat(InputArray _poin
             }
         }
     }
-#ifdef TIMES
-    auto end = std::chrono::high_resolution_clock::now();
-    outfile << "Finding mat ";
-    std::chrono::duration<double> d = end - start;
-    outfile << d.count() << endl;
-    start = std::chrono::high_resolution_clock::now();
-#endif
-    //bestInliersMat = command.FindMatForInliers(bestInliersMat);
-
     Mat f;
     f = command.TransformResultMat(bestInliersMat);
 
-#ifdef TIMES
-    end = std::chrono::high_resolution_clock::now();
-    outfile << "mat transform ";
-    d = end - start;
-    outfile << d.count() << endl;
-#endif
     return f;
 }

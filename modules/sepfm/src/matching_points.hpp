@@ -56,7 +56,7 @@ public:
         return ret;
     }
 
-     VecMatchingPoints<_Tp> subset(const vector<size_t> &indices) const
+    VecMatchingPoints<_Tp> subset(const vector<size_t> &indices) const
     {
         VecMatchingPoints<_Tp> ret;
         for (auto ix : indices)

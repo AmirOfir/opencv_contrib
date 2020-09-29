@@ -4,6 +4,7 @@
 
 #ifndef _OPENCV_MATCHING_LINES_H_
 #define _OPENCV_MATCHING_LINES_H_
+
 #include "precomp.hpp"
 
 namespace cv { 

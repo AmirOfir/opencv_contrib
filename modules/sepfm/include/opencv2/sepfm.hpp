@@ -26,7 +26,7 @@ Mat CV_EXPORTS_W findSeparableFundamentalMat(InputArray pts1, InputArray pts2, i
     double hough_rescale = DEFAULT_HOUGH_RESCALE, int num_matching_pts_to_use = 150, int pixel_res = 4, int min_hough_points = 4,
     int theta_res = 180, float max_distance_pts_line = 3, int top_line_retries = 2, int min_shared_points = 4);    
 
-cv::Mat CV_EXPORTS_W regFindFundamentalMat(InputArray _points1, InputArray _points2,
+Mat CV_EXPORTS_W regFindFundamentalMat(InputArray _points1, InputArray _points2,
     int method, double ransacReprojThreshold, double confidence,
     int maxIters, OutputArray _mask);
 
