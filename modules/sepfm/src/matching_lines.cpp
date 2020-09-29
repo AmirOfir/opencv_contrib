@@ -91,6 +91,15 @@ array<top_line,2> topTwoLinesWithMaxAngle(const vector<line_info> &lineInfosImg1
         
     for (int i = 1; i < topLines.size(); i++)
     {
+        if (topLines[i].line1_index >= lineInfosImg1.size())
+        {
+            std::ofstream outfile;  outfile.open("e:\\error.txt", std::ios_base::app); 
+            outfile << "OOR" << endl;
+            outfile << i << endl;
+            outfile << topLines[i].line1_index << endl;
+            outfile << lineInfosImg1.size() << endl;
+            outfile << topLines[i].num_inliers << endl;
+        }
         auto lineEq = lineInfosImg1[topLines[i].line1_index].line_eq_abc_norm;
         double angle = std::acos(std::min<double>((lineEq.x*firstLineEq.x) + (lineEq.y*firstLineEq.y), 1)) * 180 / CV_PI;
         if (std::min(angle, 180 - angle) > maxAngle)
@@ -103,25 +112,26 @@ array<top_line,2> topTwoLinesWithMaxAngle(const vector<line_info> &lineInfosImg1
     return { move(firstLine), move(topLines[maxAngleIx]) };
 }
 
-top_line createTopLine(InputArray _ptsImg1, InputArray _ptsImg2, const vector<Point3i> &num_shared_points_vote, 
-    const vector<line_info> &lineInfosImg1, const vector<line_info> &lineInfosImg2, int n, int num_line_ransac_iterations)
+bool createTopLine(InputArray _ptsImg1, InputArray _ptsImg2, const vector<Point3i> &num_shared_points_vote, 
+    const vector<line_info> &lineInfosImg1, const vector<line_info> &lineInfosImg2, int n, int num_line_ransac_iterations, top_line *curr)
 {
-    top_line curr;
-    int k = num_shared_points_vote[n].y;
-    int j = num_shared_points_vote[n].z;
+    int line1_index = num_shared_points_vote[n].y;
+    int line2_index = num_shared_points_vote[n].z;
 
     vector<int> arr_idx;
-    intersect1d(lineInfosImg1[k].matching_indexes.begin(), lineInfosImg1[k].matching_indexes.end(), 
-        lineInfosImg2[j].matching_indexes.begin(), lineInfosImg2[j].matching_indexes.end(), back_inserter(arr_idx));
+    intersect1d(
+        lineInfosImg1[line1_index].matching_indexes.begin(), lineInfosImg1[line1_index].matching_indexes.end(), 
+        lineInfosImg2[line2_index].matching_indexes.begin(), lineInfosImg2[line2_index].matching_indexes.end(), 
+        back_inserter(arr_idx));
 
-    vector<Point2d> matchingPoints1 = projectPointsOnLineByInices<double>(_ptsImg1, lineInfosImg1[k], arr_idx);
-    vector<Point2d> matchingPoints2 = projectPointsOnLineByInices<double>(_ptsImg2, lineInfosImg2[j], arr_idx);
+    vector<Point2d> matchingPoints1 = projectPointsOnLineByInices<double>(_ptsImg1, lineInfosImg1[line1_index], arr_idx);
+    vector<Point2d> matchingPoints2 = projectPointsOnLineByInices<double>(_ptsImg2, lineInfosImg2[line2_index], arr_idx);
 
     vector<int> uniqueIdx = uniqueIntersectedPoints(matchingPoints1, matchingPoints2);
 
     // We need at least four unique points
     if (uniqueIdx.size() < 4)
-        return curr;
+        return false;
 
     // Filter
     matchingPoints1 = byIndices<double>(matchingPoints1, uniqueIdx);
@@ -132,7 +142,7 @@ top_line createTopLine(InputArray _ptsImg1, InputArray _ptsImg2, const vector<Po
     auto lineInliersErrors = lineInliersRansac(num_line_ransac_iterations, matchingPoints);
 
     if (lineInliersErrors.inlierCount < 4)
-        return curr;
+        return false;
 
     // Find the model with the longest interval
     LineInliersModelResult lineInliersResult;
@@ -161,19 +171,19 @@ top_line createTopLine(InputArray _ptsImg1, InputArray _ptsImg2, const vector<Po
         }
     }
     
-    curr.num_inliers = (int)lineInliersResult.inlierIndexes.size();
-    curr.line_points_1 = inlierPoints1;
-    curr.line_points_2 = inlierPoints2;
-    curr.line1_index = k;
-    curr.line2_index = j;
-    curr.inlier_selected_index = { intervalEndpointsResult.firstIdx, intervalEndpointsResult.secondIdx, intervalMidPointResult.midPointIdx };
-    curr.selected_line_points1 = byIndices<double>(inlierPoints1, curr.inlier_selected_index);
-    curr.selected_line_points2 = byIndices<double>(inlierPoints2, curr.inlier_selected_index);
-    curr.max_dist = intervalEndpointsResult.distance;
-    curr.min_dist = intervalMidPointResult.minDistance;
-    curr.homg_err = lineInliersResult.meanError;
+    curr->num_inliers = (int)lineInliersResult.inlierIndexes.size();
+    curr->line_points_1 = inlierPoints1;
+    curr->line_points_2 = inlierPoints2;
+    curr->line1_index = line1_index;
+    curr->line2_index = line2_index;
+    curr->inlier_selected_index = { intervalEndpointsResult.firstIdx, intervalEndpointsResult.secondIdx, intervalMidPointResult.midPointIdx };
+    curr->selected_line_points1 = byIndices<double>(inlierPoints1, curr->inlier_selected_index);
+    curr->selected_line_points2 = byIndices<double>(inlierPoints2, curr->inlier_selected_index);
+    curr->max_dist = intervalEndpointsResult.distance;
+    curr->min_dist = intervalMidPointResult.minDistance;
+    curr->homg_err = lineInliersResult.meanError;
 
-    return curr;
+    return true;
 }
 
 vector<top_line> cv::separableFundamentalMatrix::getTopMatchingLines(
@@ -186,52 +196,53 @@ vector<top_line> cv::separableFundamentalMatrix::getTopMatchingLines(
     // start with the lines that shared the highest number of points, so we can do top-N
     // return a list index by the lines (k,j) with the projected points themself
     int num_line_ransac_iterations = int((log(0.01) / log(1 - pow(inlierRatio, 3)))) + 1;
-    
+#ifdef TIMES
     std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
     auto start = std::chrono::high_resolution_clock::now();
-
+#endif
     // Go over the top lines with the most number of shared points, project the points, store by the matching indices of the pair of lines
     int num_sorted_lines = min((int)sharedPoints.size(), 50);
     top_line topLines[50];
-    for (size_t n = 0; n < num_sorted_lines; n++)
+    bool topLinesPresent[50];
+    /*for (size_t n = 0; n < num_sorted_lines; n++)
     {
         topLines[n] = createTopLine(_ptsImg1, _ptsImg2, sharedPoints, 
             lineInfosImg1, lineInfosImg2, n, num_line_ransac_iterations);
-    }
-    /*parallel_for_(Range(0, num_sorted_lines), [&](const Range& range) {
+    }*/
+    cv::parallel_for_(Range(0, num_sorted_lines), [&](const Range& range) {
         for (size_t n = range.start; n < range.end; n++)
         {
-            topLines[n] = createTopLine(_ptsImg1, _ptsImg2, num_shared_points_vote, 
-                lineInfosImg1, lineInfosImg2, n, num_line_ransac_iterations);
+            bool success = createTopLine(_ptsImg1, _ptsImg2, sharedPoints, 
+                lineInfosImg1, lineInfosImg2, n, num_line_ransac_iterations, &(topLines[n]));
+            topLinesPresent[n] = success;
         }
-    });*/
+    });
 
+    vector<top_line> nonEmptyTopLines;
+    for (size_t i = 0; i < num_sorted_lines; i++)
+    {
+        if (topLinesPresent[i])
+            nonEmptyTopLines.push_back(topLines[i]);
+    }
+#ifdef TIMES
     auto end = std::chrono::high_resolution_clock::now();
+    outfile << num_sorted_lines << endl;
     outfile << "Creation of top lines ";
     std::chrono::duration<double> d = end - start;
     outfile << d.count() << endl;
     start = std::chrono::high_resolution_clock::now();
-    
-    vector<top_line> nonEmptyTopLines;
-    for (size_t i = 0; i < num_sorted_lines; i++)
-    {
-        if (!topLines[i].empty())
-            nonEmptyTopLines.push_back(topLines[i]);
-    }
-    
+#endif    
     if (nonEmptyTopLines.size() < 2)
         return {};
     
-    //outfile.close();
-
     auto topTwoLines = topTwoLinesWithMaxAngle(lineInfosImg1, nonEmptyTopLines);
-    //outfile.open("e:\\test.txt", std::ios_base::app); 
+#ifdef TIMES
     end = std::chrono::high_resolution_clock::now();
     outfile << "Extraction of lines with max angle ";
     d = end - start;
     outfile << d.count() << endl;
     start = std::chrono::high_resolution_clock::now();
-
+#endif
     return { topTwoLines[0], topTwoLines[1] };
     //return {};
 }
@@ -324,8 +335,11 @@ vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts,
     int pixel_res, int theta_res, double max_distance, int num_matching_pts_to_use)
 {
     vector<line_info> lineInfos;
+
+#ifdef TIMES
     std::ofstream outfile;  outfile.open("e:\\test.txt", std::ios_base::app); 
     auto start = std::chrono::high_resolution_clock::now();
+#endif
 
     num_matching_pts_to_use = min(pts.size().height, num_matching_pts_to_use);
 
@@ -340,22 +354,26 @@ vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts,
         bw_img.at<uint8_t>(x0, x1) = (unsigned short)255;
     }
 
+#ifdef TIMES
     auto end = std::chrono::high_resolution_clock::now();
     outfile << "preparing to hough lines ";
     std::chrono::duration<double> d = end - start;
     outfile << d.count() << endl;
     
     start = std::chrono::high_resolution_clock::now();
-    
+#endif  
+
     vector<Vec2f> houghLines;
     cv::HoughLines(bw_img, houghLines, pixel_res, CV_PI / theta_res, min_hough_points);
 
+#ifdef TIMES
     end = std::chrono::high_resolution_clock::now();
     outfile << "hough lines ";
     d = end - start;
     outfile << d.count() << endl;
 
     start = std::chrono::high_resolution_clock::now();
+#endif
 
     int lineIndex = 0;
     for (auto l : houghLines)
@@ -368,11 +386,11 @@ vector<line_info>  cv::separableFundamentalMatrix::getHoughLines(Mat pts,
             ++lineIndex;
         }
     }
-
+#ifdef TIMES
     end = std::chrono::high_resolution_clock::now();
     outfile << "point to line matching ";
     d = end - start;
     outfile << d.count() << endl;
-
+#endif
     return lineInfos;
 }

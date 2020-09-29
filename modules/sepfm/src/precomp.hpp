@@ -37,7 +37,6 @@ struct line_info
 class top_line
 {
 public:
-    bool empty() { return num_inliers == 0; }
     int num_inliers;
     std::vector<Point2d> line_points_1;
     std::vector<Point2d> line_points_2;

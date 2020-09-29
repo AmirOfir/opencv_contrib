@@ -121,6 +121,7 @@ struct LineInliersRansacResult
 template <typename _Tp>
 LineInliersRansacResult lineInliersRansac(int numIterations, const VecMatchingPoints<_Tp> &matchingPoints, double inlierTh = 0.35)
 {
+    
     const int k = 3;
     LineInliersRansacResult result;
     result.inlierCount = 0;
